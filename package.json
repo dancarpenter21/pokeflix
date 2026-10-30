@@ -1,0 +1,47 @@
+{
+  "name": "pokeflix-tv",
+  "productName": "Pokeflix TV",
+  "version": "1.0.2",
+  "description": "Restricted Pokeflix player with dedicated TV audio output",
+  "author": "Pokeflix TV",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "postinstall": "node node_modules/electron/install.js",
+    "start": "electron .",
+    "package": "electron-builder --win nsis --x64",
+    "test": "node --test tests/policy.test.cjs tests/routing.test.cjs",
+    "test:integration": "node tests/run-integration.cjs"
+  },
+  "build": {
+    "appId": "local.pokeflix.tv",
+    "productName": "Pokeflix TV",
+    "files": [
+      "main.js",
+      "policy.js",
+      "routing.js",
+      "shell-preload.js",
+      "shell.js",
+      "index.html",
+      "style.css",
+      "README.md"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "engines": {
+    "node": "24.22.1"
+  }
+}
