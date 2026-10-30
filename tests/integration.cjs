@@ -10,7 +10,7 @@ app.whenReady().then(async () => {
   // All remote content is synthetic: the test never contacts the live site.
   session.fromPartition('persist:pokeflix').protocol.handle('https', request => {
     remoteRequests.push(request.url);
-    return new Response('<!doctype html><title>Fixture</title><a id="outside" href="https://evil.test/">Outside</a><a id="inside" href="https://www.pokeflix.tv/episode">Episode</a><img src="https://blocked.example.com/image.png"><iframe src="https://blocked.example.com/player"></iframe>', { headers: { 'content-type': 'text/html' } });
+    return new Response('<!doctype html><title>Fixture</title><style>body{background:#181818;color:#000000}nav{background:#242424}a{color:#e53935}</style><nav>Fixture navigation</nav><a id="outside" href="https://evil.test/">Outside</a><a id="inside" href="https://www.pokeflix.tv/episode">Episode</a><img src="https://blocked.example.com/image.png"><iframe src="https://blocked.example.com/player"></iframe>', { headers: { 'content-type': 'text/html' } });
   });
 });
 require('../main');
@@ -28,6 +28,37 @@ app.whenReady().then(async () => {
     const source = remoteView.webContents;
     await until(() => source.getTitle() === 'Fixture', 'Fixture failed to load');
     assert.equal(source.isAudioMuted(), true);
+    assert.equal(remoteView.getBounds().y, 0);
+    assert.equal(remoteView.getBounds().height, win.getContentSize()[1] - 56);
+    assert.equal(await shell.executeJavaScript('Math.abs(document.querySelector(".app-controls").getBoundingClientRect().bottom - innerHeight) <= 1'), true);
+    assert.deepEqual(await shell.executeJavaScript(`['.app-controls', '#status', 'button', 'select', 'input'].map(selector => getComputedStyle(document.querySelector(selector)).color)`), Array(5).fill('rgb(238, 238, 238)'));
+    assert.equal(await shell.executeJavaScript('document.querySelectorAll("#connect, #mute, [data-command=home], [data-command=fullscreen]").length'), 0);
+    assert.equal(await shell.executeJavaScript('document.querySelector(".app-controls").getBoundingClientRect().height'), 56);
+    assert.deepEqual(await shell.executeJavaScript('Array.from(document.querySelectorAll(".icon-button"), b => [b.getAttribute("aria-label"), b.title, b.textContent.includes("?")])'), [['Back', 'Back', false], ['Reload page', 'Reload page', false], ['Refresh audio outputs', 'Refresh audio outputs', false], ['Settings', 'Settings', false]]);
+    if (process.env.POKEFLIX_QA_SCREENSHOT) fs.writeFileSync(process.env.POKEFLIX_QA_SCREENSHOT, (await shell.capturePage()).toPNG());
+    const assertFullscreenBackdrop = async () => {
+      await until(() => shell.executeJavaScript('document.documentElement.classList.contains("fullscreen")'), 'Fullscreen backdrop missing');
+      assert.equal(await shell.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'), 'rgb(0, 0, 0)');
+      assert.equal(await shell.executeJavaScript('getComputedStyle(document.querySelector(".app-controls")).visibility'), 'hidden');
+    };
+    const fillsWindow = () => {
+      const [width, height] = win.getContentSize();
+      assert.deepEqual(remoteView.getBounds(), { x: 0, y: 0, width, height });
+    };
+    await shell.executeJavaScript('controls.command("fullscreen")');
+    await until(() => win.isFullScreen(), 'Toolbar did not fullscreen the window');
+    fillsWindow();
+    await assertFullscreenBackdrop();
+    source.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+    source.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    await until(() => !win.isFullScreen() && remoteView.getBounds().height === win.getContentSize()[1] - 56, 'Escape did not restore the toolbar');
+    await until(() => shell.executeJavaScript('getComputedStyle(document.querySelector(".app-controls")).visibility === "visible"'), 'Controls did not restore');
+    await source.executeJavaScript('document.documentElement.requestFullscreen()', true);
+    await until(() => win.isFullScreen() && remoteView.getBounds().y === 0, 'Player did not fullscreen the window');
+    fillsWindow();
+    await assertFullscreenBackdrop();
+    await source.executeJavaScript('document.exitFullscreen()');
+    await until(() => !win.isFullScreen() && remoteView.getBounds().height === win.getContentSize()[1] - 56, 'Player exit did not restore the window');
     await until(() => shell.executeJavaScript('typeof controls !== "undefined" && document.querySelector("#outputs").options.length > 1'), 'Outputs not exposed');
     await source.executeJavaScript('document.querySelector("#outside").click()'); await delay(200);
     assert.equal(source.getURL(), 'https://www.pokeflix.tv/');
@@ -58,7 +89,7 @@ app.whenReady().then(async () => {
     await until(() => remoteView.getVisible(), 'Cancel did not restore playback');
     assert.equal(await shell.executeJavaScript('navigator.mediaDevices.getUserMedia({audio:true}).then(()=>false,()=>true)'), true);
     // Set volume to zero in the test only; do not emit a tone on the user's speakers.
-    await shell.executeJavaScript(`const originalPlay=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){this.volume=0;return originalPlay.call(this)};document.querySelector('#outputs').selectedIndex=1;document.querySelector('#connect').click()`);
+    await shell.executeJavaScript(`const originalPlay=HTMLMediaElement.prototype.play;HTMLMediaElement.prototype.play=function(){this.volume=0;return originalPlay.call(this)};document.querySelector('#outputs').selectedIndex=1;document.querySelector('#outputs').dispatchEvent(new Event('change'))`);
     await until(() => shell.executeJavaScript('document.querySelector("#status").textContent.startsWith("Audio →")'), 'Routing did not start');
     assert.equal(source.isAudioMuted(), true);
     await source.executeJavaScript('window.ctx=new AudioContext();window.osc=ctx.createOscillator();osc.connect(ctx.destination);osc.start();ctx.resume()', true);
@@ -71,10 +102,19 @@ app.whenReady().then(async () => {
     assert.equal(await shell.executeJavaScript('stream.getAudioTracks()[0].readyState'), 'live');
     await shell.executeJavaScript('navigator.mediaDevices.dispatchEvent(new Event("devicechange"))');
     assert.equal(await shell.executeJavaScript('stream === null && player === null'), true);
-    await shell.executeJavaScript('document.querySelector("#connect").click()');
+    await shell.executeJavaScript('document.querySelector("#refresh").click()');
     await until(() => shell.executeJavaScript('document.querySelector("#status").textContent.startsWith("Audio →")'), 'Reconnect failed');
-    await shell.executeJavaScript('document.querySelector("#mute").click()');
+    await shell.executeJavaScript('document.querySelector("#outputs").value="";document.querySelector("#outputs").dispatchEvent(new Event("change"))');
     assert.equal(await shell.executeJavaScript('stream === null && player === null'), true);
+    assert.equal(source.isAudioMuted(), true);
+    await shell.executeJavaScript('document.querySelector("#outputs").value="";document.querySelector("#outputs").dispatchEvent(new Event("change"))');
+    assert.equal(await shell.executeJavaScript('stream === null && player === null'), true);
+    await shell.executeJavaScript('document.querySelector("#outputs").selectedIndex=1;document.querySelector("#outputs").dispatchEvent(new Event("change"));document.querySelector("#outputs").dispatchEvent(new Event("change"))');
+    await until(() => shell.executeJavaScript('active && player.sinkId === document.querySelector("#outputs").value'), 'Rapid selection changes did not connect');
+    await shell.reload();
+    await until(() => !shell.isLoading(), 'Shell reload did not finish');
+    await until(() => shell.executeJavaScript('typeof active !== "undefined" && active && player.sinkId === document.querySelector("#outputs").value'), 'Saved output did not connect automatically at startup');
+    await shell.executeJavaScript('document.querySelector("#outputs").value="";document.querySelector("#outputs").dispatchEvent(new Event("change"))');
     assert.equal(source.isAudioMuted(), true);
     console.log('PASS: sandboxed shell, navigation/iframe/popup blocking, settings, denied microphone, explicit audio sink, muted-source Web Audio capture, and stop teardown');
     app.exit(0);

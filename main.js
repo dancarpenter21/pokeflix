@@ -33,10 +33,38 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   const remote = session.fromPartition('persist:pokeflix');
   view = new WebContentsView({ webPreferences: { session: remote, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true } });
+  // Keep transparent player margins opaque, including pillarboxed videos.
+  view.setBackgroundColor('#000000');
   win.contentView.addChildView(view);
-  const resize = () => { const [width, height] = win.getContentSize(); view.setBounds({ x: 0, y: 144, width, height: Math.max(0, height - 144) }); };
-  win.on('resize', resize); resize();
+  let playerFullscreen = false;
+  const resize = () => {
+    const [width, height] = win.getContentSize();
+    const controlsHeight = playerFullscreen || win.isFullScreen() ? 0 : 56;
+    send('fullscreen-state', controlsHeight === 0);
+    win.setBackgroundColor(controlsHeight === 0 ? '#000000' : '#151515');
+    view.setBounds({ x: 0, y: 0, width, height: Math.max(0, height - controlsHeight) });
+  };
+  win.on('resize', resize);
+  win.on('enter-full-screen', resize);
+  win.on('leave-full-screen', resize);
+  resize();
   const wc = view.webContents;
+  const exitFullscreen = () => {
+    playerFullscreen = false;
+    wc.executeJavaScript('if (document.fullscreenElement) document.exitFullscreen()').catch(() => {});
+    win.setFullScreen(false);
+    resize();
+  };
+  wc.on('enter-html-full-screen', () => {
+    playerFullscreen = true;
+    win.setFullScreen(true);
+    resize();
+  });
+  wc.on('leave-html-full-screen', () => {
+    playerFullscreen = false;
+    win.setFullScreen(false);
+    resize();
+  });
   // Permanent mute prevents any source playback on Windows' default output.
   // Whole-tab capture receives audio even while this WebContents is muted.
   wc.setAudioMuted(true);
@@ -97,11 +125,14 @@ app.whenReady().then(async () => {
     if (command === 'home') wc.loadURL('https://www.pokeflix.tv/').catch(() => {});
     if (command === 'reload') wc.reload();
     if (command === 'back' && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
-    if (command === 'fullscreen') win.setFullScreen(!win.isFullScreen());
+    if (command === 'fullscreen') {
+      if (win.isFullScreen() || playerFullscreen) exitFullscreen();
+      else { win.setFullScreen(true); resize(); wc.focus(); }
+    }
     if (command === 'settings') { hostsUnlocked = false; view.setVisible(false); send('settings-auth', true); }
     if (command === 'close-settings') { hostsUnlocked = false; view.setVisible(true); }
   });
-  for (const contents of [win.webContents, wc]) contents.on('before-input-event', (_e, input) => { if (input.type === 'keyDown' && input.key === 'Escape') { hostsUnlocked = false; win.setFullScreen(false); view.setVisible(true); send('settings-visible', false); } });
+  for (const contents of [win.webContents, wc]) contents.on('before-input-event', (_e, input) => { if (input.type === 'keyDown' && input.key === 'Escape') { hostsUnlocked = false; exitFullscreen(); view.setVisible(true); send('settings-visible', false); } });
   win.on('closed', () => { captureAuthorized = false; if (!wc.isDestroyed()) wc.close(); win = null; });
   await win.loadURL(SHELL);
   wc.loadURL('https://www.pokeflix.tv/').catch(() => {});

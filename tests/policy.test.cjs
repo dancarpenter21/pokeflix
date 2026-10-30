@@ -36,3 +36,17 @@ test('host settings reject URLs, wildcards and paths', () => {
   assert.equal(parseHost(' CDN.Example.com '), 'cdn.example.com');
   for (const h of ['', '*.example.com', 'https://example.com', 'example.com/a', 'example.com\\a', 'example.com:443', 'user@example.com', 'example.com?x', 'example.com#x']) assert.throws(() => parseHost(h));
 });
+
+test('numbered video servers are allowed for resources with existing saved settings', () => {
+  const hosts = normalizeSettings({ resourceHosts: [], fontHostsMigrated: true }).resourceHosts;
+  for (const host of ['v1.pkflx.com', 'v4.pkflx.com', 'v123.pkflx.com']) {
+    for (const resourceType of ['xhr', 'media', 'subFrame']) {
+      assert.equal(requestAllowed({ url: `https://${host}/playlist.m3u8`, resourceType }, hosts), true);
+    }
+    assert.equal(requestAllowed({ url: `blob:https://${host}/uuid`, resourceType: 'media' }, hosts), true);
+    assert.equal(requestAllowed({ url: `https://${host}/`, resourceType: 'mainFrame' }, hosts), false);
+  }
+  for (const url of ['https://pkflx.com/', 'https://v.pkflx.com/', 'https://video.pkflx.com/', 'https://v1.pkflx.com.evil.test/', 'https://nested.v1.pkflx.com/', 'https://v1.evil.pkflx.com/', 'http://v1.pkflx.com/', 'https://user@v1.pkflx.com/', 'https://v1.pkflx.com:8888/', 'blob:https://v1.pkflx.com:8888/uuid']) {
+    assert.equal(requestAllowed({ url, resourceType: 'xhr' }, hosts), false, url);
+  }
+});

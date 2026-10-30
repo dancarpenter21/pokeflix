@@ -4,15 +4,17 @@ A Windows Electron app for watching Pokeflix on a Miracast TV while other applic
 
 The app loads `https://www.pokeflix.tv/` at runtime. No episodes or downloaded media are bundled.
 
+Numbered HTTPS video hosts (`v1.pkflx.com`, `v2.pkflx.com`, and future `v[number].pkflx.com` servers) are automatically allowed for playback resources. This built-in rule also applies to existing settings. Other subdomains still require exact approval, and top-level browsing stays on Pokeflix.
+
 ## Install and use
 
 Run the Windows installer from a release or build it with the instructions below. Installers are unsigned and install for the current Windows user.
 
 1. Connect the Roku with **Windows + K** and accept the connection on the TV. Use **Extend** in Windows projection settings.
-2. Launch Pokeflix TV and move its window onto the TV. Use **Fullscreen** if desired; **Escape** exits.
+2. Launch Pokeflix TV and move its window onto the TV. Use the player's fullscreen control if desired; **Escape** exits.
 3. Keep Windows' default audio output on your gaming headphones.
-4. Click **Refresh**, choose the TV's explicit audio output, then **Connect audio**. Play an episode.
-5. The app remembers the output but starts muted each launch. Click **Connect audio** to enable it.
+4. Click the **Refresh audio outputs** icon and choose the TV's explicit audio output. Audio connects automatically. Play an episode.
+5. The app remembers the output and connects automatically at startup when it is available. Use the player's mute control; reselect an output or use the audio refresh icon to retry a connection.
 
 The app does not establish the Miracast connection itself. If Windows changes its global default while connecting the TV, set it back to your headphones.
 

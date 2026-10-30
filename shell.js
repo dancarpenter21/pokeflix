@@ -1,7 +1,9 @@
 const outputSelect = document.querySelector('#outputs'), status = document.querySelector('#status');
 let saved = null, stream = null, player = null, generation = 0, active = false, starting = false, checking = false;
 let resourceHosts = [], blockedHosts = [];
-function stop(message = 'Muted · Connect audio to resume.') {
+let reconnectPending = false;
+function stop(message = 'Muted · Reselect an output or refresh to resume.') {
+  reconnectPending = false;
   generation++; active = false;
   if (player) { player.pause(); player.srcObject = null; player = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
@@ -16,7 +18,7 @@ async function refresh() {
   return devices;
 }
 async function connect() {
-  if (starting) return;
+  if (starting) { stop('Connecting selected audio output…'); reconnectPending = true; return; }
   starting = true; stop('Connecting TV audio…');
   const token = generation; let captured;
   try {
@@ -31,8 +33,8 @@ async function connect() {
     stream = captured;
     // Retain the video track to keep capture alive; render only captured audio.
     audio.srcObject = new MediaStream(captured.getAudioTracks());
-    audio.addEventListener('error', () => stop('Muted · Audio output failed. Reconnect the TV.'));
-    for (const t of captured.getTracks()) t.addEventListener('ended', () => stop('Muted · Capture ended. Connect audio to resume.'));
+    audio.addEventListener('error', () => { if (token === generation) stop('Muted · Audio output failed. Reconnect the TV.'); });
+    for (const t of captured.getTracks()) t.addEventListener('ended', () => { if (token === generation) stop('Muted · Capture ended. Reselect an output or refresh to resume.'); });
     player = audio; await audio.play();
     if (token !== generation) return;
     saved = { id: selected.deviceId, label: selected.label }; await controls.saveOutput(saved);
@@ -41,7 +43,10 @@ async function connect() {
   } catch (error) {
     if (token === generation) stop(`Muted · ${error.message}`);
     if (captured && captured !== stream) captured.getTracks().forEach(t => t.stop());
-  } finally { starting = false; }
+  } finally {
+    starting = false;
+    if (reconnectPending) { reconnectPending = false; void connect(); }
+  }
 }
 async function checkDevice() {
   if (checking || !active) return;
@@ -53,10 +58,15 @@ async function checkDevice() {
 }
 navigator.mediaDevices.addEventListener('devicechange', async () => { stop('Muted · Audio devices changed. Verify the TV and reconnect audio.'); try { await refresh(); } catch { /* Remain muted. */ } });
 setInterval(checkDevice, 500);
-document.querySelector('#refresh').onclick = () => refresh().catch(e => { status.textContent = e.message; });
-document.querySelector('#connect').onclick = connect;
-document.querySelector('#mute').onclick = () => stop();
-outputSelect.onchange = () => stop('Muted · Press Connect audio for the selected output.');
+document.querySelector('#refresh').onclick = async () => {
+  try { await refresh(); if (outputSelect.value) await connect(); else stop('Muted · Select a TV audio output.'); }
+  catch (error) { status.textContent = error.message; }
+};
+
+outputSelect.onchange = () => {
+  if (outputSelect.value) void connect();
+  else stop('Muted · Select a TV audio output.');
+};
 function closeSettings() {
   document.querySelector('#settings').hidden = true;
   document.querySelector('#settings-auth').hidden = true;
@@ -80,7 +90,7 @@ document.querySelector('#unlock-form').onsubmit = async e => {
 };
 function renderHosts() {
   const approved = document.querySelector('#approved'); approved.replaceChildren();
-  for (const host of ['pokeflix.tv', 'www.pokeflix.tv', ...resourceHosts]) {
+  for (const host of ['pokeflix.tv', 'www.pokeflix.tv', 'v[number].pkflx.com (video servers)', ...resourceHosts]) {
     const item = document.createElement('li'); item.textContent = host;
     if (resourceHosts.includes(host)) {
       const b = document.createElement('button'); b.textContent = 'Remove';
@@ -115,8 +125,11 @@ controls.on('settings-visible', visible => {
 });
 controls.on('stop-routing', message => stop(`Muted · ${message}`));
 controls.on('page', message => { document.querySelector('#page').textContent = message; });
+controls.on('fullscreen-state', active => {
+  document.documentElement.classList.toggle('fullscreen', active);
+});
 window.addEventListener('beforeunload', () => stop());
 controls.initialize().then(async ({ settings, blocked }) => {
   saved = settings.output; resourceHosts = settings.resourceHosts; blockedHosts = blocked; renderHosts(); await refresh();
-  if (outputSelect.value && saved) status.textContent = 'Muted · Saved output found. Press Connect audio.';
+  if (outputSelect.value) await connect();
 }).catch(e => { status.textContent = `Muted · ${e.message}`; });

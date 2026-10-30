@@ -10,13 +10,17 @@ function parseHost(value) {
 function navigationAllowed(value) {
   try { const u = new URL(value); return u.protocol === 'https:' && !u.username && !u.password && !u.port && BASE_HOSTS.includes(u.hostname); } catch { return false; }
 }
+// Only numbered video servers; never sibling domains or nested subdomains.
+function resourceHostAllowed(host, hosts) {
+  return hosts.includes(host) || /^v\d+\.pkflx\.com$/.test(host);
+}
 function requestAllowed(details, hosts) {
   if (details.resourceType === 'mainFrame') return navigationAllowed(details.url);
   try {
     const u = new URL(details.url);
     if (u.protocol === 'data:') return details.resourceType === 'image';
-    if (u.protocol === 'blob:') { const origin = new URL(u.pathname); return origin.protocol === 'https:' && hosts.includes(origin.hostname); }
-    return u.protocol === 'https:' && !u.username && !u.password && !u.port && hosts.includes(u.hostname);
+    if (u.protocol === 'blob:') { const origin = new URL(u.pathname); return origin.protocol === 'https:' && !origin.username && !origin.password && !origin.port && resourceHostAllowed(origin.hostname, hosts); }
+    return u.protocol === 'https:' && !u.username && !u.password && !u.port && resourceHostAllowed(u.hostname, hosts);
   } catch { return false; }
 }
 function normalizeSettings(stored = {}) {
