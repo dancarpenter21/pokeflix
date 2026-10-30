@@ -93,3 +93,6 @@ The repository excludes dependencies, installers, scratch captures, logs, and en
 - Confirm player icons render and outside links, popups, unapproved frames, and downloads stay blocked.
 
 Synthetic tests and muted live video playback have been verified during development. Actual Roku sound, latency, default-output changes, and physical reconnect behavior require testing with the connected TV.
+
+### Manual picture delay (experimental)
+Use Sync in the toolbar to add 0�1,000 ms of picture delay in 25 ms steps when sound arrives late. Reset returns to direct viewing. Values are remembered per selected output. Corrected viewing captures up to 1080p/30 fps; site controls respond after the picture delay. Hardware validation and fullscreen adjustment controls remain outstanding.

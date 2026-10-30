@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0
+
+- Add manual picture delay from 0 to 1,000 ms in 25 ms steps for late TV audio.
+- Remember sync offsets per audio output and provide a Reset control.
+- Forward mouse and keyboard input through delayed playback, capped at 1080p/30 fps.
+- Initial TV playback reported good by the user. Existing unit tests pass; Electron integration timed out. Fullscreen adjustment controls and dedicated sync regression coverage remain outstanding.
+
 ## 1.1.0
 
 - Fill the monitor during player fullscreen, with black margins and hidden app controls.

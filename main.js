@@ -24,7 +24,7 @@ app.whenReady().then(async () => {
   } catch { /* Use safe defaults. */ }
   save();
   const local = session.fromPartition('persist:controls');
-  const assets = new Set(['index.html', 'shell.js', 'style.css', 'routing.js']);
+  const assets = new Set(['index.html', 'shell.js', 'style.css', 'routing.js', 'sync.html', 'sync.js']);
   local.protocol.handle('pokeflix-app', request => {
     const u = new URL(request.url), name = u.pathname.slice(1);
     return u.hostname === 'app' && assets.has(name) ? net.fetch(pathToFileURL(path.join(__dirname, name)).href) : new Response('Not found', { status: 404 });
@@ -48,7 +48,29 @@ app.whenReady().then(async () => {
   win.on('enter-full-screen', resize);
   win.on('leave-full-screen', resize);
   resize();
+  const syncView = new WebContentsView({ webPreferences: { session: local, preload: path.join(__dirname, 'shell-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  win.contentView.addChildView(syncView); syncView.setVisible(false);
+  syncView.webContents.loadURL('pokeflix-app://app/sync.html');
+  const syncTrusted = e => e.sender === syncView.webContents && e.senderFrame === syncView.webContents.mainFrame;
+  ipcMain.handle('sync-offset', (e, value) => {
+    if (!trusted(e) || !Number.isInteger(value) || value < 0 || value > 1000 || value % 25) throw Error('Invalid offset');
+    settings.syncOffsets ||= {};
+    if (settings.output) settings.syncOffsets[JSON.stringify(settings.output)] = value;
+    save();
+    syncView.setBounds(view.getBounds()); syncView.setVisible(value > 0);
+    syncView.webContents.send('sync-offset', value);
+  });
+  win.on('resize', () => syncView.setBounds(view.getBounds()));
+  ipcMain.on('sync-input', (e, event) => {
+    if (!syncTrusted(e) || !event || !['mouseMove','mouseDown','mouseUp','mouseWheel','keyDown','keyUp','char'].includes(event.type)) return;
+    const bounds = view.getBounds();
+    if (event.type.startsWith('mouse') && (!Number.isFinite(event.x) || !Number.isFinite(event.y) || event.x < 0 || event.y < 0 || event.x > bounds.width || event.y > bounds.height)) return;
+    try { view.webContents.sendInputEvent(event); } catch {}
+  });
+  syncView.webContents.on('console-message', (_e, ...args) => {});
+  ipcMain.on('sync-failed', e => { if (syncTrusted(e)) { syncView.setVisible(false); send('page', 'Picture delay unavailable'); } });
   const wc = view.webContents;
+  wc.setBackgroundThrottling(false);
   const exitFullscreen = () => {
     playerFullscreen = false;
     wc.executeJavaScript('if (document.fullscreenElement) document.exitFullscreen()').catch(() => {});
@@ -93,10 +115,10 @@ app.whenReady().then(async () => {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', e => e.preventDefault());
   win.webContents.on('did-start-navigation', (_e, _url, _inPlace, main) => { if (main) hostsUnlocked = false; });
-  local.setPermissionCheckHandler((contents, permission) => contents === win.webContents && ['speaker-selection', 'display-capture'].includes(permission));
+  local.setPermissionCheckHandler((contents, permission) => [win.webContents, syncView.webContents].includes(contents) && ['speaker-selection', 'display-capture'].includes(permission));
   local.setPermissionRequestHandler((contents, permission, cb) => cb(contents === win.webContents && ['speaker-selection', 'display-capture'].includes(permission)));
   local.setDisplayMediaRequestHandler((request, cb) => {
-    if (!captureAuthorized || request.frame !== win.webContents.mainFrame || !['pokeflix-app://app', 'pokeflix-app://app/'].includes(request.securityOrigin) || wc.isDestroyed()) return cb(null);
+    if (!captureAuthorized || ![win.webContents.mainFrame, syncView.webContents.mainFrame].includes(request.frame) || !['pokeflix-app://app', 'pokeflix-app://app/'].includes(request.securityOrigin) || wc.isDestroyed()) return cb(null);
     cb({ video: wc.mainFrame, audio: wc.mainFrame, enableLocalEcho: false });
   });
   ipcMain.handle('initialize', e => { if (!trusted(e)) throw Error('Untrusted sender'); return { settings, blocked: [...blocked.values()] }; });
@@ -105,7 +127,7 @@ app.whenReady().then(async () => {
     if (!trusted(e) || !output || typeof output.id !== 'string' || typeof output.label !== 'string' || !output.id || ['default', 'communications'].includes(output.id)) throw Error('Select an explicit output');
     settings.output = { id: output.id, label: output.label }; save();
   });
-  ipcMain.on('stop-routing', e => { if (trusted(e)) captureAuthorized = false; });
+  ipcMain.on('stop-routing', e => { if (trusted(e)) { captureAuthorized = false; syncView.setVisible(false); syncView.webContents.send('sync-offset', 0); } });
   ipcMain.handle('unlock-settings', (e, password) => {
     if (!trusted(e)) throw Error('Untrusted sender');
     hostsUnlocked = typeof password === 'string' && password === SETTINGS_PASSWORD;
@@ -129,7 +151,7 @@ app.whenReady().then(async () => {
       if (win.isFullScreen() || playerFullscreen) exitFullscreen();
       else { win.setFullScreen(true); resize(); wc.focus(); }
     }
-    if (command === 'settings') { hostsUnlocked = false; view.setVisible(false); send('settings-auth', true); }
+    if (command === 'settings') { hostsUnlocked = false; view.setVisible(false); syncView.setVisible(false); send('settings-auth', true); }
     if (command === 'close-settings') { hostsUnlocked = false; view.setVisible(true); }
   });
   for (const contents of [win.webContents, wc]) contents.on('before-input-event', (_e, input) => { if (input.type === 'keyDown' && input.key === 'Escape') { hostsUnlocked = false; exitFullscreen(); view.setVisible(true); send('settings-visible', false); } });

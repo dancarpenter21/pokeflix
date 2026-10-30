@@ -39,7 +39,7 @@ async function connect() {
     if (token !== generation) return;
     saved = { id: selected.deviceId, label: selected.label }; await controls.saveOutput(saved);
     if (token !== generation) return;
-    active = true; status.textContent = `Audio → ${selected.label || 'Selected TV output'}`;
+    active = true; syncInput.value = syncOffsets[JSON.stringify(saved)] || 0; await controls.syncOffset(Number(syncInput.value)); status.textContent = `Audio → ${selected.label || 'Selected TV output'}`;
   } catch (error) {
     if (token === generation) stop(`Muted · ${error.message}`);
     if (captured && captured !== stream) captured.getTracks().forEach(t => t.stop());
@@ -130,6 +130,11 @@ controls.on('fullscreen-state', active => {
 });
 window.addEventListener('beforeunload', () => stop());
 controls.initialize().then(async ({ settings, blocked }) => {
-  saved = settings.output; resourceHosts = settings.resourceHosts; blockedHosts = blocked; renderHosts(); await refresh();
+  syncOffsets = settings.syncOffsets || {}; saved = settings.output; resourceHosts = settings.resourceHosts; blockedHosts = blocked; renderHosts(); await refresh();
   if (outputSelect.value) await connect();
 }).catch(e => { status.textContent = `Muted · ${e.message}`; });
+
+let syncOffsets = {};
+const syncInput = document.querySelector('#sync');
+syncInput.onchange = () => { const value = Number(syncInput.value); if (Number.isInteger(value) && value >= 0 && value <= 1000 && value % 25 === 0) { syncOffsets[JSON.stringify(saved)] = value; controls.syncOffset(value).catch(e => status.textContent = e.message); } };
+document.querySelector('#sync-reset').onclick = () => { syncInput.value = 0; syncInput.onchange(); };

@@ -1,7 +1,7 @@
 {
   "name": "pokeflix-tv",
   "productName": "Pokeflix TV",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Restricted Pokeflix player with dedicated TV audio output",
   "author": "Pokeflix TV",
   "private": true,
@@ -24,7 +24,9 @@
       "shell.js",
       "index.html",
       "style.css",
-      "README.md"
+      "README.md",
+      "sync.html",
+      "sync.js"
     ],
     "win": {
       "target": "nsis",

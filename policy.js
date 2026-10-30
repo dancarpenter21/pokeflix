@@ -24,8 +24,9 @@ function requestAllowed(details, hosts) {
   } catch { return false; }
 }
 function normalizeSettings(stored = {}) {
-  const settings = { output: null, resourceHosts: [...DEFAULT_RESOURCE_HOSTS], fontHostsMigrated: true };
+  const settings = { output: null, syncOffsets: {}, resourceHosts: [...DEFAULT_RESOURCE_HOSTS], fontHostsMigrated: true };
   if (!stored || typeof stored !== 'object') return settings;
+  if (stored.syncOffsets && typeof stored.syncOffsets === 'object') for (const [key,value] of Object.entries(stored.syncOffsets)) if (Number.isInteger(value) && value >= 0 && value <= 1000 && value % 25 === 0) settings.syncOffsets[key] = value;
   if (stored.output && typeof stored.output.id === 'string' && typeof stored.output.label === 'string') settings.output = { id: stored.output.id, label: stored.output.label };
   if (Array.isArray(stored.resourceHosts)) settings.resourceHosts = stored.resourceHosts.map(parseHost);
   // Upgrade the original saved allowlist once. Later explicit removals stay removed.
